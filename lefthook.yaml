@@ -1,0 +1,28 @@
+output:
+  - summary
+  - meta
+
+pre-commit:
+  parallel: true
+  commands:
+    selene:
+      glob: "{lua,plugin,tests}/**/*.lua"
+      run: selene {staged_files}
+    stylua:
+      glob: "*.lua"
+      run: stylua --check {staged_files}
+    rustfmt:
+      glob: "rust/**/*.rs"
+      run: make rustfmt-check
+    typos:
+      run: typos {staged_files}
+
+pre-push:
+  parallel: true
+  commands:
+    lint:
+      run: make lint
+    test:
+      run: make test
+    license-check:
+      run: make license-check

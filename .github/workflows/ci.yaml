@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+  lua-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Run StyLua check
+        uses: JohnnyMorganz/stylua-action@479972f01e665acfcba96ada452c36608bdbbb5e # v4.1.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version: latest
+          args: --check .
+      - name: Install selene
+        run: |
+          wget "https://github.com/Kampfkarren/selene/releases/download/${SELENE_VERSION}/selene-${SELENE_VERSION}-linux.zip"
+          echo "$SHA256_CHECKSUM  selene-${SELENE_VERSION}-linux.zip" > "selene-${SELENE_VERSION}-linux.zip.checksum"
+          sha256sum --check "selene-${SELENE_VERSION}-linux.zip.checksum"
+          unzip "selene-${SELENE_VERSION}-linux.zip"
+          install -Dp selene "$HOME/.local/bin/selene"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        env:
+          SELENE_VERSION: "0.29.0"
+          SHA256_CHECKSUM: "e2510f91826373dafb77e741b2df826ecfe4b94dfb20f8939809773ee4d53b6d"
+      - name: Run Selene
+        run: make selene
+
+  rust-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
+      - name: Check Rust formatting
+        run: make rustfmt-check
+      - name: Run clippy
+        run: make rust-lint
+
+  rust-license:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: Run license check
+        run: make license-check
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nvim_version:
+          - stable
+          - nightly
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Neovim
+        uses: rhysd/action-setup-vim@19e3dd31a84dbc2c5445d65e9b363f616cab96c1 # v1.6.0
+        with:
+          neovim: true
+          version: ${{ matrix.nvim_version }}
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - name: Run tests
+        run: make test
